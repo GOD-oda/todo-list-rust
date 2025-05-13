@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder, post, get};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder, post, get, put};
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, Arc};
 use uuid::Uuid;
@@ -13,6 +13,11 @@ struct Todo {
 
 #[derive(Debug, Serialize,  Deserialize)]
 struct CreateTodoRequest {
+    title: String,
+}
+
+#[derive(Debug, Serialize,  Deserialize)]
+struct UpdateTodoRequest {
     title: String,
 }
 
@@ -57,6 +62,23 @@ async fn create_todo(
     HttpResponse::Created().json(new_todo)
 }
 
+#[put("/todos/{id}")]
+async fn update_todo(
+    app_state: web::Data<Arc<AppState>>,
+    path: web::Path<String>,
+    todo_req: web::Json<UpdateTodoRequest>,
+) -> impl Responder {
+    let todo_id = path.into_inner();
+    let mut todos = app_state.todos.lock().unwrap();
+    if let Some(todo_index) = todos.iter().position(|t| t.id == todo_id) {
+        todos[todo_index].title = todo_req.title.clone();
+        
+        HttpResponse::Ok().json(todos[todo_index].clone())
+    } else {
+        HttpResponse::NotFound().json(format!("Todo with id {} not found", todo_id))
+    }
+}
+
 #[get("/hello")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().json("Hello world")
@@ -78,6 +100,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_todo)
             .service(create_todo)
             .service(hello)
+            .service(update_todo)
     })
     .bind("127.0.0.1:8080")?
     .run()
