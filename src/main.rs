@@ -27,6 +27,19 @@ async fn get_todos(app_state: web::Data<Arc<AppState>>) -> impl Responder {
     HttpResponse::Ok().json(todos.clone())
 }
 
+#[get("/todos/{id}")]
+async fn get_todo(app_state: web::Data<Arc<AppState>>, path: web::Path<String>) -> impl Responder {
+    let todo_id = path.into_inner();
+    let todos = app_state.todos.lock().unwrap();
+
+    if let Some(todo) = todos.iter().find(|t| t.id == todo_id) {
+        HttpResponse::Ok().json(todo)
+    } else {
+        HttpResponse::NotFound().json(format!("Todo with id {} not found", todo_id))
+    }
+}
+
+
 #[post("/todos")]
 async fn create_todo(
     app_state: web::Data<Arc<AppState>>,
@@ -62,6 +75,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
             .service(get_todos)
+            .service(get_todo)
             .service(create_todo)
             .service(hello)
     })
