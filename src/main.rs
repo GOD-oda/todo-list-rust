@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, Responder, post, get, put};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder, post, get, put, delete};
 use serde::{Deserialize, Serialize};
 use std::sync::{Mutex, Arc};
 use uuid::Uuid;
@@ -79,6 +79,22 @@ async fn update_todo(
     }
 }
 
+#[delete("/todos/{id}")]
+async fn delete_todo(
+    app_state: web::Data<Arc<AppState>>,
+    path: web::Path<String>,
+) -> impl Responder {
+    let todo_id = path.into_inner();
+    let mut todos = app_state.todos.lock().unwrap();
+    if let Some(todo_index) = todos.iter().position(|t| t.id == todo_id) {
+        todos.remove(todo_index);
+        
+        HttpResponse::NoContent().json("")
+    } else {
+        HttpResponse::NotFound().json(format!("Todo with id {} not found", todo_id))
+    }
+}
+
 #[get("/hello")]
 async fn hello() -> impl Responder {
     HttpResponse::Ok().json("Hello world")
@@ -101,6 +117,7 @@ async fn main() -> std::io::Result<()> {
             .service(create_todo)
             .service(hello)
             .service(update_todo)
+            .service(delete_todo)
     })
     .bind("127.0.0.1:8080")?
     .run()
