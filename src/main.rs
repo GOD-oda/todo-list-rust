@@ -72,7 +72,7 @@ async fn update_todo(
     let mut todos = app_state.todos.lock().unwrap();
     if let Some(todo_index) = todos.iter().position(|t| t.id == todo_id) {
         todos[todo_index].title = todo_req.title.clone();
-        
+
         HttpResponse::Ok().json(todos[todo_index].clone())
     } else {
         HttpResponse::NotFound().json(format!("Todo with id {} not found", todo_id))
@@ -88,16 +88,11 @@ async fn delete_todo(
     let mut todos = app_state.todos.lock().unwrap();
     if let Some(todo_index) = todos.iter().position(|t| t.id == todo_id) {
         todos.remove(todo_index);
-        
+
         HttpResponse::NoContent().json("")
     } else {
         HttpResponse::NotFound().json(format!("Todo with id {} not found", todo_id))
     }
-}
-
-#[get("/hello")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().json("Hello world")
 }
 
 #[actix_web::main]
@@ -115,7 +110,6 @@ async fn main() -> std::io::Result<()> {
             .service(get_todos)
             .service(get_todo)
             .service(create_todo)
-            .service(hello)
             .service(update_todo)
             .service(delete_todo)
     })
@@ -124,55 +118,108 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use actix_web::http::StatusCode;
-//     use actix_web::test;
-//     
-//     use super::*;
-// 
-//     #[actix_web::test]
-//     async fn test_hello() {
-//         let app = test::init_service(App::new().service(hello)).await;
-//         let req = test::TestRequest::get().uri("/hello").to_request();
-//         let resp = test::call_service(&app, req).await;
-//         assert_eq!(resp.status(), StatusCode::OK);
-//     }
-//     
-//     #[actix_web::test]
-//     async fn test_get_empty_todos() {
-//         let app_state = Arc::new(AppState {
-//             todos: Mutex::new(Vec::new()),
-//         });
-//         let app = test::init_service(
-//             App::new().app_data(web::Data::new(app_state.clone())).service(get_todos)
-//         ).await;
-//         let req = test::TestRequest::get().uri("/todos").to_request();
-//         let result = test::call_service(&app, req).await;
-//         assert_eq!(result.status(), StatusCode::OK);
-// 
-//         let expected: Vec<Todo> = Vec::new();
-//         let expected_json = serde_json::to_string(&expected).unwrap();
-//         let actual_json = test::read_body(result).await;
-//         assert_eq!(actual_json, expected_json);
-//     }
-// 
-//     #[actix_web::test]
-//     async fn test_create_todo() {
-//         let app = test::init_service(App::new().service(create_todo)).await;
-//         let todo_request = CreateTodoRequest {
-//             title: "Test Todo".to_string(),
-//         };
-//         let req = test::TestRequest::post()
-//             .uri("/todos")
-//             .set_json(&todo_request)
-//             .to_request();
-//         let resp = test::call_service(&app, req).await;
-//         assert_eq!(resp.status(), StatusCode::CREATED);
-// 
-//         let todo: Todo = test::read_body_json(resp).await;
-//         assert_eq!(todo.title, "Test Todo");
-//         assert_eq!(todo.completed, false);
-//         assert!(!todo.id.is_empty());
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use actix_web::http::StatusCode;
+    use actix_web::test;
+    use super::*;
+
+    #[actix_web::test]
+    async fn test_get_empty_todos() {
+        let app_state = Arc::new(AppState {
+            todos: Mutex::new(Vec::new()),
+        });
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(app_state.clone())).service(get_todos)
+        ).await;
+        let req = test::TestRequest::get().uri("/todos").to_request();
+        let result = test::call_service(&app, req).await;
+        assert_eq!(result.status(), StatusCode::OK);
+
+        let expected: Vec<Todo> = Vec::new();
+        let expected_json = serde_json::to_string(&expected).unwrap();
+        let actual_json = test::read_body(result).await;
+        assert_eq!(actual_json, expected_json);
+    }
+    
+    #[actix_web::test]
+    async fn test_get_todos() {
+        let mut v = Vec::new();
+        v.push(Todo {
+            id: Uuid::new_v4().to_string(),
+            title: "title".to_string(),
+            completed: false,
+        });
+        let app_state = Arc::new(AppState {
+            todos: Mutex::new(v),
+        });
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(app_state.clone())).service(get_todos)
+        ).await;
+        let req = test::TestRequest::get().uri("/todos").to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        
+        let todos: Vec<Todo> = test::read_body_json(resp).await;
+        assert_eq!(todos.len(), 1);
+    }
+
+    #[actix_web::test]
+    async fn test_create_todo() {
+        let app_state = Arc::new(AppState {
+            todos: Mutex::new(Vec::new()),
+        });
+
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(app_state.clone())).service(create_todo)
+        ).await;
+        
+        let todo_request = CreateTodoRequest {
+            title: "test".to_string(),
+        };
+        let req = test::TestRequest::post()
+            .uri("/todos")
+            .set_json(&todo_request)
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let todo: Todo = test::read_body_json(resp).await;
+        assert_eq!(todo.title, "test");
+        assert_eq!(todo.completed, false);
+        assert!(!todo.id.is_empty());
+    }
+
+    #[actix_web::test]
+    async fn test_update_todo() {
+        let id = Uuid::new_v4().to_string();
+        let old_todo = Todo {
+            id,
+            title: "title".to_string(),
+            completed: false,
+        }; 
+        let mut v = Vec::new();
+        v.push(old_todo.clone());
+        let app_state = Arc::new(AppState {
+            todos: Mutex::new(v),
+        });
+        let app = test::init_service(
+            App::new().app_data(web::Data::new(app_state.clone())).service(update_todo)
+        ).await;
+        let todo_request = UpdateTodoRequest {
+            title: "new".to_string(),
+        };
+        let req = test::TestRequest::put()
+            .uri(&format!("/todos/{}", old_todo.id))
+            .set_json(&todo_request)
+            .to_request();
+        
+        let resp = test::call_service(&app, req).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let todo: Todo = test::read_body_json(resp).await;
+        assert_eq!(todo.title, "new");
+    }
+}
