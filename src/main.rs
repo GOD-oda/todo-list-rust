@@ -25,14 +25,14 @@ struct AppState {
     todos: Mutex<Vec<Todo>>,
 }
 
-#[get("/todos")]
+#[get("")]
 async fn get_todos(app_state: web::Data<Arc<AppState>>) -> impl Responder {
     let todos = app_state.todos.lock().unwrap();
 
     HttpResponse::Ok().json(todos.clone())
 }
 
-#[get("/todos/{id}")]
+#[get("/{id}")]
 async fn get_todo(app_state: web::Data<Arc<AppState>>, path: web::Path<String>) -> impl Responder {
     let todo_id = path.into_inner();
     let todos = app_state.todos.lock().unwrap();
@@ -45,7 +45,7 @@ async fn get_todo(app_state: web::Data<Arc<AppState>>, path: web::Path<String>) 
 }
 
 
-#[post("/todos")]
+#[post("")]
 async fn create_todo(
     app_state: web::Data<Arc<AppState>>,
     todo_req: web::Json<CreateTodoRequest>,
@@ -62,7 +62,7 @@ async fn create_todo(
     HttpResponse::Created().json(new_todo)
 }
 
-#[put("/todos/{id}")]
+#[put("/{id}")]
 async fn update_todo(
     app_state: web::Data<Arc<AppState>>,
     path: web::Path<String>,
@@ -79,7 +79,7 @@ async fn update_todo(
     }
 }
 
-#[delete("/todos/{id}")]
+#[delete("/{id}")]
 async fn delete_todo(
     app_state: web::Data<Arc<AppState>>,
     path: web::Path<String>,
@@ -99,7 +99,7 @@ async fn delete_todo(
 async fn main() -> std::io::Result<()> {
     dotenv().expect(".env file not found");
     env_logger::init();
-    
+
     let app_state = Arc::new(AppState {
         todos: Mutex::new(Vec::new()),
     });
@@ -107,11 +107,14 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(app_state.clone()))
-            .service(get_todos)
-            .service(get_todo)
-            .service(create_todo)
-            .service(update_todo)
-            .service(delete_todo)
+            .service(
+                web::scope("/todos")
+                    .service(get_todos)
+                    .service(get_todo)
+                    .service(create_todo)
+                    .service(update_todo)
+                    .service(delete_todo)
+            )
     })
     .bind("127.0.0.1:8080")?
     .run()
@@ -130,7 +133,9 @@ mod tests {
             todos: Mutex::new(Vec::new()),
         });
         let app = test::init_service(
-            App::new().app_data(web::Data::new(app_state.clone())).service(get_todos)
+            App::new()
+                .app_data(web::Data::new(app_state.clone()))
+                .service(web::scope("/todos").service(get_todos))
         ).await;
         let req = test::TestRequest::get().uri("/todos").to_request();
         let result = test::call_service(&app, req).await;
@@ -141,7 +146,7 @@ mod tests {
         let actual_json = test::read_body(result).await;
         assert_eq!(actual_json, expected_json);
     }
-    
+
     #[actix_web::test]
     async fn test_get_todos() {
         let mut v = Vec::new();
@@ -154,13 +159,15 @@ mod tests {
             todos: Mutex::new(v),
         });
         let app = test::init_service(
-            App::new().app_data(web::Data::new(app_state.clone())).service(get_todos)
+            App::new()
+                .app_data(web::Data::new(app_state.clone()))
+                .service(web::scope("/todos").service(get_todos))
         ).await;
         let req = test::TestRequest::get().uri("/todos").to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
-        
+
         let todos: Vec<Todo> = test::read_body_json(resp).await;
         assert_eq!(todos.len(), 1);
     }
@@ -172,9 +179,11 @@ mod tests {
         });
 
         let app = test::init_service(
-            App::new().app_data(web::Data::new(app_state.clone())).service(create_todo)
+            App::new()
+                .app_data(web::Data::new(app_state.clone()))
+                .service(web::scope("/todos").service(create_todo))
         ).await;
-        
+
         let todo_request = CreateTodoRequest {
             title: "test".to_string(),
         };
@@ -182,7 +191,7 @@ mod tests {
             .uri("/todos")
             .set_json(&todo_request)
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
 
@@ -206,7 +215,9 @@ mod tests {
             todos: Mutex::new(v),
         });
         let app = test::init_service(
-            App::new().app_data(web::Data::new(app_state.clone())).service(update_todo)
+            App::new()
+                .app_data(web::Data::new(app_state.clone()))
+                .service(web::scope("/todos").service(update_todo))
         ).await;
         let todo_request = UpdateTodoRequest {
             title: "new".to_string(),
@@ -215,7 +226,7 @@ mod tests {
             .uri(&format!("/todos/{}", old_todo.id))
             .set_json(&todo_request)
             .to_request();
-        
+
         let resp = test::call_service(&app, req).await;
         assert_eq!(resp.status(), StatusCode::OK);
 
