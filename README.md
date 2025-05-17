@@ -18,3 +18,10 @@ cargo build
 ```shell
 cargo run
 ```
+
+## Testing
+
+```shell
+cargo test
+```
+
